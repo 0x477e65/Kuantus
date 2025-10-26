@@ -106,4 +106,8 @@ Edytuj `NODENAME` przed uruchomieniem, zapisz i uruchom skrypt.
 Częstujcie się
 
 ---
+echo "<!-- refresh visibility $(date) -->" >> README.md
+git add README.md
+git commit -m "Force refresh visibility"
+git push
 

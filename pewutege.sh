@@ -5,12 +5,16 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 # ======================= CONFIG =======================
-NODENAME="PeeWuuTeGie"
+NODENAME="TwojaNazwaTutaj"
 CHAIN="schrodinger"
 CHAIN_DIR="/root/chain"
 BASE_PATH="/var/lib/quantus"
 LOG_FILE="${BASE_PATH}/node.log"
 # ======================================================
+
+# Upewnij się, że istnieje katalog na bazę i log
+mkdir -p "$BASE_PATH"
+touch "$LOG_FILE" || true
 
 # ======== Kolory ========
 BOLD="\e[1m"; RESET="\e[0m"; RED="\e[31m"; GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"

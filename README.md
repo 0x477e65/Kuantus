@@ -106,8 +106,32 @@ Edytuj `NODENAME` przed uruchomieniem, zapisz i uruchom skrypt.
 Częstujcie się
 
 ---
-echo "<!-- refresh visibility $(date) -->" >> README.md
-git add README.md
-git commit -m "Force refresh visibility"
-git push
+
+## Przydatne komendy
+
+**Start minera w TMUX po zabiciu | reebot**
+
+`tmux kill-session -t quantus-miner 2>/dev/null || true
+tmux new-session -d -s quantus-miner "quantus-miner --workers \\$(nproc)"`
+
+**Start NODE w TMUX po zabiciu | reebot**
+
+`tmux new-session -d -s quantus-node "quantus-node \
+  --validator \
+  --chain $CHAIN \
+  --base-path $BASE_PATH \
+  --name \"$NODENAME\" \
+  --rewards-address $REWARDS_ADDR \
+  --node-key-file $NODE_KEY_FILE \
+  --rpc-external \
+  --rpc-methods unsafe \
+  --rpc-cors all \
+  --enable-peer-sharing \
+  --out-peers 50 \
+  --in-peers 100 \
+  --allow-private-ip \
+  --external-miner-url http://127.0.0.1:9833 2>&1 | tee -a $LOG_FILE"`
+
+
+
 

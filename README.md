@@ -111,8 +111,7 @@ Częstujcie się
 
 **Start minera w TMUX po zabiciu | reebot**
 
-`tmux kill-session -t quantus-miner 2>/dev/null || true
-tmux new-session -d -s quantus-miner "quantus-miner --workers \\$(nproc)"`
+`tmux new-session -d -s quantus-miner "quantus-miner --workers \\$(nproc)"`
 
 **Start NODE w TMUX po zabiciu | reebot**
 

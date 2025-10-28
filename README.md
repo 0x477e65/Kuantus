@@ -40,12 +40,12 @@ wget https://github.com/0x477e65/Kuantus/blob/main/pewutege.sh
 sudo chmod +x pewutege.sh
 ```
 
-3. **(Zalecane) Przejrzyj skrypt** (`nano pewutege.sh`) i zmień konfigurację na początku pliku (`NODENAME` i może `CHAIN_DIR` - nie instalowałem loklanie z poziomu usera jeszcze tylko na serwerze) przed uruchomieniem.
+3. **(Zalecane) Przejrzyj skrypt** (`nano pewutege.sh`) i zmień konfigurację na początku pliku (`NODENAME`) przed uruchomieniem.
 
 4. **Uruchom jako root** (skrypt wymaga uprawnień root):
 
 ```bash
-sudo bash ./pewutege.sh
+sudo ./pewutege.sh
 ```
 
 ---
@@ -64,18 +64,10 @@ sudo bash ./pewutege.sh
 **Natychmiast** po instalacji wykonaj kopię zapasową `seed.txt` i `node-key`:
 
 ```bash
-# kopia lokalna (bezpieczne miejsce)
-cp /root/seed.txt /root/seed.txt.bak
-cp /root/chain/node-key ~/node-key.bak
-
-# opcjonalnie zaszyfruj kopie i przechowuj offline (np. na pendrive/druk)
-gpg --symmetric --cipher-algo AES256 --output ~/seed.txt.gpg /root/seed.txt
+# Skopiuj w bezpieczne miejsce pliki : 
+/root/seed.txt
+/root/chain/node-key
 ```
-
-Przechowuj `secret phrase` offline (papierowy zapis, hardware wallet). Nie udostępniaj pliku `seed.txt` w internecie.
-
----
-
 ## Jak edytować nazwę węzła i inne ustawienia
 
 Skrypt ma sekcję **CONFIG** na samym początku. Najważniejsze zmienne:
@@ -94,9 +86,9 @@ Edytuj `NODENAME` przed uruchomieniem, zapisz i uruchom skrypt.
 
 ## Bezpieczeństwo i uwagi
 
-* Skrypt instaluje `rustup` i ustawia toolchain `nightly`. Upewnij się, że robisz to na dedykowanej maszynie produkcyjnej.
+* Skrypt instaluje `rustup` i ustawia toolchain `nightly`.
 * `seed.txt` zawiera wrażliwe dane — wykonaj backup offline i skasuj z maszyn publicznych.
-* Firewall UFW jest ustawiony domyślnie (pozwala porty 22, 30333, 9933, 9833). Dostosuj reguły do swojego środowiska.
+* Firewall UFW jest ustawiony domyślnie (otwiera porty 22, 30333, 9933, 9833)
 * Skrypt włącza `--rpc-methods unsafe` i `--rpc-cors all` w `quantus-node` dla wygody — jeśli wystawiasz node na publiczne interfejsy, rozważ ich zmianę.
 
 ---

@@ -107,7 +107,7 @@ Częstujcie się
 
 ---
 
-## Przydatne komendy
+## ⚙️ Przydatne komendy
 
 **Start minera w TMUX po zabiciu | reebot**
 

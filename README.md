@@ -115,21 +115,7 @@ Częstujcie się
 
 **Start NODE w TMUX po zabiciu | reebot**
 
-`tmux new-session -d -s quantus-node "quantus-node \
-  --validator \
-  --chain $CHAIN \
-  --base-path $BASE_PATH \
-  --name \"$NODENAME\" \
-  --rewards-address $REWARDS_ADDR \
-  --node-key-file $NODE_KEY_FILE \
-  --rpc-external \
-  --rpc-methods unsafe \
-  --rpc-cors all \
-  --enable-peer-sharing \
-  --out-peers 50 \
-  --in-peers 100 \
-  --allow-private-ip \
-  --external-miner-url http://127.0.0.1:9833 2>&1 | tee -a $LOG_FILE"`
+`tmux new-session -d -s quantus-node "quantus-node \ --validator \ --chain $CHAIN \ --base-path $BASE_PATH \ --name \"$NODENAME\" \ --rewards-address $REWARDS_ADDR \ --node-key-file $NODE_KEY_FILE \ --rpc-external \ --rpc-methods unsafe \ --rpc-cors all \ --enable-peer-sharing \ --out-peers 50 \ --in-peers 100 \ --allow-private-ip \ --external-miner-url http://127.0.0.1:9833 2>&1 | tee -a $LOG_FILE"`
 
 
 

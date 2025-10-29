@@ -8,7 +8,7 @@ unset TMUX
 set -euo pipefail
 
 # ---------------- CONFIG ----------------
-NODENAME="Kurwa"
+NODENAME="Twoja-Nazwa-Node"
 CHAIN="schrodinger"
 BASE_PATH="/var/lib/quantus"
 CHAIN_DIR="/root/chain"

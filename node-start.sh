@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================
-# Quantus Node Autorestart (tmux session: quantus-node)
-# Używa Twojej oryginalnej, działającej komendy startowej
+# Quantus Node Autostart & Watchdog
+# Uruchamia node w tmux z automatycznym restartem i logowaniem.
+# Rewards address pobiera z /root/seed.txt.
 # ==============================================================
 
 unset TMUX

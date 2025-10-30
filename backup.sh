@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Quantus Node Backup Script (FINAL, keystore-fixed)
+# Quantus Node Backup Script (FINAL)
 # - Backup danych node'a + keystore + node-key (bez kodu źródłowego)
 # - Struktura: /root/quantus-backup/<YYYY-MM-DD>/Qantus_backup__<DD-MM-YY>__.tar.zst
 # - Meta-log:  /root/quantus-backup/data/backup-<YYYY-MM-DD>.txt
@@ -70,8 +70,6 @@ else
 fi
 
 # --- Wykrywanie katalogów keystore (również na przyszłość) ---
-# Główna (u Ciebie): /var/lib/quantus/chains/schrodinger/keystore
-# Dodatkowo sprawdzamy alternatywy (gdyby zmieniła się ścieżka).
 mapfile -t KEYSTORE_DIRS < <(
   {
     find "$DATA_DIR/chains" -maxdepth 3 -type d -name keystore 2>/dev/null;
@@ -86,7 +84,6 @@ else
 fi
 
 # --- Tworzenie listy źródeł do tar ---
-# Zawsze: DATA_DIR i NODE_KEY; dodatkowo dołączamy każde wykryte 'keystore'
 TAR_SOURCES=("$DATA_DIR")
 [[ -f "$NODE_KEY" ]] && TAR_SOURCES+=("$NODE_KEY")
 for k in "${KEYSTORE_DIRS[@]:-}"; do
@@ -96,7 +93,6 @@ done
 # --- Tworzenie backupu ---
 echo
 echo "🗜️  Tworzę archiwum (Zstd -19) ..."
-# -v = verbose. Dużo outputu w logu jest normalne.
 sudo tar -I 'zstd -19' -cvf "$BACKUP_FILE" \
   "${TAR_SOURCES[@]}" \
   2>&1 | tee "$LOG_FILE"
@@ -104,7 +100,6 @@ sudo tar -I 'zstd -19' -cvf "$BACKUP_FILE" \
 # --- Sprawdzenie integralności archiwum ---
 echo
 echo "🔍 Weryfikacja integralności archiwum..."
-# zstd -t wypisze m.in. rozmiar skompresowanego pliku
 sudo zstd -t "$BACKUP_FILE" && echo "✅ Test ZSTD: OK"
 
 # --- Raport rozmiaru archiwum ---
@@ -114,15 +109,26 @@ ARCHIVE_SIZE="$(du -h "$BACKUP_FILE" | awk '{print $1}')"
 echo
 echo "🧩 Weryfikacja zawartości:"
 HAS_KEYSTORE="NO"
-# Szukamy katalogu 'keystore' (zawartość lub sam katalog) oraz pliku node-key
-if sudo tar -tvf "$BACKUP_FILE" | grep -Eq 'chains/.*/keystore($|/)|(^|/)(node-key)$'; then
+
+# ⬇️ poprawka: listuj z dekoderem zstd i tylko nazwy wpisów
+CONTENT_LIST="$(sudo tar -I zstd -tf "$BACKUP_FILE" || true)"
+
+# szukaj 'keystore' (katalog lub jego zawartość) i dokładnej nazwy 'node-key'
+MATCHED_KEYS="$(printf '%s\n' "$CONTENT_LIST" | grep -E '(^|/)(keystore)(/|$)|(^|/)node-key$' || true)"
+if [[ -n "$MATCHED_KEYS" ]]; then
   HAS_KEYSTORE="YES"
-  echo "✅ W archiwum znaleziono keystore i/lub node-key."
+  echo "✅ W archiwum znaleziono kluczowe wpisy:"
+  # wypisz je ładnie w punktach
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    echo "   • $line"
+  done <<< "$MATCHED_KEYS"
 else
   echo "⚠️  Brak wpisów keystore/node-key w archiwum!"
 fi
 
-if sudo tar -tvf "$BACKUP_FILE" | grep -q "/opt/quantus"; then
+# ⬇️ poprawka: testuj zawartość również z -I zstd i po samych nazwach
+if printf '%s\n' "$CONTENT_LIST" | grep -q '^opt/quantus/'; then
   echo "⚠️  UWAGA: backup zawiera pliki źródłowe /opt/quantus (niezalecane!)"
   HAS_SOURCE="YES"
 else

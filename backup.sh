@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Quantus Node Backup Script (FINAL)
+# Quantus Node Backup Script (FINAL, .tar.zst only)
 # - Snapshot danych node'a + keystore + node-key (bez kodu źródłowego)
 # - Struktura: /root/quantus-backup/<YYYY-MM-DD>/Qantus_backup__<DD-MM-YY>__.tar.zst
 # - Meta-log:  /root/quantus-backup/data/backup-<YYYY-MM-DD>.txt
 # - Ubijanie sesji tmux zawierających "node" lub "miner"
-# - Dodatkowo: katalog proof/ (logi tmux, wersje), suma SHA256, opcjonalny .rar
+# - Dodatkowo: katalog proof/ (logi tmux, wersje), suma SHA256
 # ==============================================================================
 set -euo pipefail
 umask 077
@@ -26,7 +26,6 @@ DATE_TAG="$(date +%d-%m-%y)"    # np. 30-10-25 -> nazwa pliku
 
 BACKUP_DIR="${BACKUP_ROOT}/${DATE_DAY}"
 BACKUP_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.tar.zst"
-BACKUP_RAR="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.rar"
 SHA256_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.sha256"
 LOG_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.log"
 SUMMARY_FILE="${BACKUP_META_DIR}/backup-${DATE_DAY}.txt"
@@ -65,12 +64,13 @@ KILLED_SESSIONS=""
 if command -v tmux >/dev/null 2>&1; then
   if tmux ls 2>/dev/null | grep -Eiq 'node|min'; then
     echo "⏸️  Wykryto aktywne sesje tmux ('node'/'miner') — zatrzymuję..."
-    while read -r session; do
+    # bezpieczny wariant bez blokowania
+    for session in $(tmux ls 2>/dev/null | grep -E 'node|min' | cut -d: -f1); do
       [[ -z "$session" ]] && continue
       echo "   🔹 Zabijam sesję: $session"
       tmux kill-session -t "$session" || true
       KILLED_SESSIONS+="$session "
-    done < <(tmux ls 2>/dev/null | grep -E 'node|min' | cut -d: -f1)
+    done
   else
     echo "✅ Brak aktywnych sesji tmux node/miner – można bezpiecznie tworzyć backup."
   fi
@@ -188,24 +188,6 @@ fi
 # --- Suma SHA256 (dla archiwum .tar.zst) ---
 sha256sum "$BACKUP_FILE" > "$SHA256_FILE"
 
-# --- (Opcjonalnie) dodatkowe archiwum .rar z rekordem naprawczym 5% ---
-if command -v rar >/dev/null 2>&1; then
-  echo
-  echo "🗄️  Tworzę archiwum RAR (z rekordem naprawczym 5%)..."
-  (
-    cd "${BACKUP_DIR}"
-    # do .rar wrzucamy .tar.zst + .sha256 + katalog proof/ (dowody)
-    rar a -rr5 -m5 -ep1 "$(basename "$BACKUP_RAR")" \
-      "$(basename "$BACKUP_FILE")" \
-      "$(basename "$SHA256_FILE")" \
-      "proof/" > /dev/null
-  )
-  echo "✅ Utworzono: ${BACKUP_RAR}"
-  du -h "${BACKUP_RAR}" || true
-else
-  echo "ℹ️  rar nie jest zainstalowany (apt install rar) – pomijam .rar"
-fi
-
 # --- Zapis meta-informacji do osobnego pliku (dla audytu) ---
 {
   echo "=== Quantus Backup Meta ==="
@@ -213,7 +195,6 @@ fi
   echo "Backup file:     $BACKUP_FILE"
   echo "Backup size:     $ARCHIVE_SIZE"
   echo "SHA256 file:     $SHA256_FILE"
-  [[ -f "$BACKUP_RAR" ]] && echo "Backup RAR:      $BACKUP_RAR"
   echo "Source dir:      $DATA_DIR"
   echo "Source size:     $SIZE_BEFORE"
   echo "Chain dir:       $CHAIN_DIR"
@@ -236,7 +217,6 @@ fi
 echo
 echo "=== PODSUMOWANIE ==="
 echo "📦 Backup zapisano: $BACKUP_FILE"
-[[ -f "$BACKUP_RAR" ]] && echo "🗄️  Archiwum RAR:  $BACKUP_RAR"
 echo "🧾 Suma SHA256:    $SHA256_FILE"
 echo "📄 Log zapisano:    $LOG_FILE"
 echo "📝 Meta-log:        $SUMMARY_FILE"

@@ -14,12 +14,12 @@ umask 077
 BACKUP_ROOT="/root/quantus-backup"
 BACKUP_META_DIR="${BACKUP_ROOT}/data"
 
-DATA_DIR="/var/lib/quantus"                 # --base-path (potwierdzone)
+DATA_DIR="/var/lib/quantus"                 # --base-path
 CHAIN_NAME="schrodinger"                    # nazwa łańcucha
 CHAIN_DIR="${DATA_DIR}/chains/${CHAIN_NAME}"
 
 NODE_KEY="/root/chain/node-key"
-CHAIN_SPEC="/root/chain/schro.raw.json"     # spec łańcucha, jeśli używana
+CHAIN_SPEC="/root/chain/schro.raw.json"     # spec łańcucha (jeśli używana)
 
 DATE_DAY="$(date +%F)"          # np. 2025-10-30
 DATE_TAG="$(date +%d-%m-%y)"    # np. 30-10-25 -> nazwa pliku
@@ -78,11 +78,11 @@ else
   echo "ℹ️  tmux nie znaleziony – pomijam sekcję zatrzymywania sesji."
 fi
 
-# --- Wykrywanie katalogów keystore (również na przyszłość) ---
+# --- Wykrywanie katalogów keystore (bezpiecznie, z || true) ---
 mapfile -t KEYSTORE_DIRS < <(
   {
-    find "$DATA_DIR/chains" -maxdepth 3 -type d -name keystore 2>/dev/null;
-    find /root/chain/chains -maxdepth 3 -type d -name keystore 2>/dev/null;
+    find "$DATA_DIR/chains" -maxdepth 3 -type d -name keystore 2>/dev/null || true
+    find /root/chain/chains -maxdepth 3 -type d -name keystore 2>/dev/null || true
   } | sort -u
 )
 if [[ ${#KEYSTORE_DIRS[@]} -gt 0 ]]; then
@@ -98,7 +98,7 @@ mkdir -p "${PROOF_DIR}"
 
 # Zrzuty tmux (jeśli jakiekolwiek sesje są uruchomione)
 if command -v tmux >/dev/null 2>&1; then
-  tmux list-sessions 2>/dev/null | awk -F: '{print $1}' | while read -r s; do
+  for s in $(tmux list-sessions 2>/dev/null | awk -F: '{print $1}'); do
     case "$s" in
       *node*|*miner*)
         tmux capture-pane -pt "$s" > "${PROOF_DIR}/${s}_$(date +%F_%H-%M-%S).log" || true
@@ -120,33 +120,34 @@ fi
 [[ -f /root/Kuantus/miner-start.sh ]] && cp -f /root/Kuantus/miner-start.sh "${PROOF_DIR}/"
 
 # --- Tworzenie listy źródeł do tar ---
-TAR_SOURCES=("$DATA_DIR")
-# jawnie dodajemy kluczowe podkatalogi łańcucha, jeśli istnieją
+TAR_SOURCES=()
+# kluczowe podkatalogi łańcucha (bez dublowania całego DATA_DIR)
 [[ -d "${CHAIN_DIR}/db"       ]] && TAR_SOURCES+=("${CHAIN_DIR}/db")
 [[ -d "${CHAIN_DIR}/network"  ]] && TAR_SOURCES+=("${CHAIN_DIR}/network")
 [[ -d "${CHAIN_DIR}/keystore" ]] && TAR_SOURCES+=("${CHAIN_DIR}/keystore")
 
 # node-key i chain spec
-[[ -f "$NODE_KEY"  ]] && TAR_SOURCES+=("$NODE_KEY")
+[[ -f "$NODE_KEY"   ]] && TAR_SOURCES+=("$NODE_KEY")
 [[ -f "$CHAIN_SPEC" ]] && TAR_SOURCES+=("$CHAIN_SPEC")
 
 # keystore'y znalezione dynamicznie
 for k in "${KEYSTORE_DIRS[@]:-}"; do TAR_SOURCES+=("$k"); done
 
-# katalog dowodowy
+# log noda + katalog dowodowy
+[[ -f "${DATA_DIR}/node.log" ]] && TAR_SOURCES+=("${DATA_DIR}/node.log")
 TAR_SOURCES+=("$PROOF_DIR")
 
 # --- Tworzenie backupu .tar.zst ---
 echo
 echo "🗜️  Tworzę archiwum (Zstd -19) ..."
-sudo tar -I 'zstd -19' -cvf "$BACKUP_FILE" \
+tar -I 'zstd -19' -cvf "$BACKUP_FILE" \
   "${TAR_SOURCES[@]}" \
   2>&1 | tee "$LOG_FILE"
 
 # --- Sprawdzenie integralności archiwum ---
 echo
 echo "🔍 Weryfikacja integralności archiwum..."
-sudo zstd -t "$BACKUP_FILE" && echo "✅ Test ZSTD: OK"
+zstd -t "$BACKUP_FILE" && echo "✅ Test ZSTD: OK"
 
 # --- Raport rozmiaru archiwum ---
 ARCHIVE_SIZE="$(du -h "$BACKUP_FILE" | awk '{print $1}')"
@@ -155,7 +156,7 @@ ARCHIVE_SIZE="$(du -h "$BACKUP_FILE" | awk '{print $1}')"
 echo
 echo "🧩 Weryfikacja zawartości:"
 HAS_KEYSTORE="NO"
-CONTENT_LIST="$(sudo tar -I zstd -tf "$BACKUP_FILE" || true)"
+CONTENT_LIST="$(tar -I zstd -tf "$BACKUP_FILE" || true)"
 
 MATCHED_KEYS="$(printf '%s\n' "$CONTENT_LIST" | grep -E '(^|/)(keystore)(/|$)|(^|/)node-key$' || true)"
 if [[ -n "$MATCHED_KEYS" ]]; then

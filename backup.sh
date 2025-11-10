@@ -115,10 +115,6 @@ fi
   ps -ef | grep -i '[q]uantus-node' || true
 } > "${PROOF_DIR}/environment.txt"
 
-# Skrypty startowe (jeśli istnieją)
-[[ -f /root/Kuantus/node-start.sh  ]] && cp -f /root/Kuantus/node-start.sh  "${PROOF_DIR}/"
-[[ -f /root/Kuantus/miner-start.sh ]] && cp -f /root/Kuantus/miner-start.sh "${PROOF_DIR}/"
-
 # --- Tworzenie listy źródeł do tar ---
 TAR_SOURCES=()
 # kluczowe podkatalogi łańcucha (bez dublowania całego DATA_DIR)

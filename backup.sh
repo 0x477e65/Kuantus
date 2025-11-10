@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Quantus Node Backup Script (FINAL)
-# - Backup danych node'a + keystore + node-key (bez kodu źródłowego)
+# - Snapshot danych node'a + keystore + node-key (bez kodu źródłowego)
 # - Struktura: /root/quantus-backup/<YYYY-MM-DD>/Qantus_backup__<DD-MM-YY>__.tar.zst
 # - Meta-log:  /root/quantus-backup/data/backup-<YYYY-MM-DD>.txt
-# - Ubijanie wszystkich tmux session zawierających "node" lub "miner"
+# - Ubijanie sesji tmux zawierających "node" lub "miner"
+# - Dodatkowo: katalog proof/ (logi tmux, wersje), suma SHA256, opcjonalny .rar
 # ==============================================================================
 set -euo pipefail
+umask 077
 
 # --- Konfiguracja ścieżek ---
 BACKUP_ROOT="/root/quantus-backup"
 BACKUP_META_DIR="${BACKUP_ROOT}/data"
-DATA_DIR="/var/lib/quantus"
+
+DATA_DIR="/var/lib/quantus"                 # --base-path (potwierdzone)
+CHAIN_NAME="schrodinger"                    # nazwa łańcucha
+CHAIN_DIR="${DATA_DIR}/chains/${CHAIN_NAME}"
+
 NODE_KEY="/root/chain/node-key"
+CHAIN_SPEC="/root/chain/schro.raw.json"     # spec łańcucha, jeśli używana
 
 DATE_DAY="$(date +%F)"          # np. 2025-10-30
 DATE_TAG="$(date +%d-%m-%y)"    # np. 30-10-25 -> nazwa pliku
 
 BACKUP_DIR="${BACKUP_ROOT}/${DATE_DAY}"
 BACKUP_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.tar.zst"
+BACKUP_RAR="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.rar"
+SHA256_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.sha256"
 LOG_FILE="${BACKUP_DIR}/Qantus_backup__${DATE_TAG}__.log"
 SUMMARY_FILE="${BACKUP_META_DIR}/backup-${DATE_DAY}.txt"
 
@@ -43,9 +52,9 @@ if [[ ! -d "$DATA_DIR" ]]; then
   echo -e "${RED}❌ ERROR: brak katalogu danych: ${DATA_DIR}${RESET}"
   exit 1
 fi
-if [[ ! -f "$NODE_KEY" ]]; then
-  echo "⚠️  Ostrzeżenie: nie znaleziono pliku node-key (${NODE_KEY})"
-fi
+[[ -d "$CHAIN_DIR" ]] || echo "ℹ️  Uwaga: ${CHAIN_DIR} nie istnieje (inny łańcuch?)"
+[[ -f "$NODE_KEY" ]] || echo "⚠️  Ostrzeżenie: brak pliku node-key (${NODE_KEY})"
+[[ -f "$CHAIN_SPEC" ]] || echo "ℹ️  Uwaga: brak chain spec (${CHAIN_SPEC}) — pomijam"
 
 echo "📦 Rozmiar danych przed kompresją:"
 SIZE_BEFORE="$(du -sh "$DATA_DIR" | awk '{print $1}')"
@@ -83,14 +92,51 @@ else
   echo "⚠️  Nie znaleziono katalogów keystore (sprawdzono $DATA_DIR/chains oraz /root/chain/chains)."
 fi
 
+# --- Katalog PROOF z artefaktami dowodowymi ---
+PROOF_DIR="${BACKUP_DIR}/proof"
+mkdir -p "${PROOF_DIR}"
+
+# Zrzuty tmux (jeśli jakiekolwiek sesje są uruchomione)
+if command -v tmux >/dev/null 2>&1; then
+  tmux list-sessions 2>/dev/null | awk -F: '{print $1}' | while read -r s; do
+    case "$s" in
+      *node*|*miner*)
+        tmux capture-pane -pt "$s" > "${PROOF_DIR}/${s}_$(date +%F_%H-%M-%S).log" || true
+        ;;
+    esac
+  done
+fi
+
+# Metadane/wersje środowiska
+{
+  date -Is
+  uname -a
+  command -v quantus-node >/dev/null 2>&1 && quantus-node --version || echo "quantus-node: not in PATH"
+  ps -ef | grep -i '[q]uantus-node' || true
+} > "${PROOF_DIR}/environment.txt"
+
+# Skrypty startowe (jeśli istnieją)
+[[ -f /root/Kuantus/node-start.sh  ]] && cp -f /root/Kuantus/node-start.sh  "${PROOF_DIR}/"
+[[ -f /root/Kuantus/miner-start.sh ]] && cp -f /root/Kuantus/miner-start.sh "${PROOF_DIR}/"
+
 # --- Tworzenie listy źródeł do tar ---
 TAR_SOURCES=("$DATA_DIR")
-[[ -f "$NODE_KEY" ]] && TAR_SOURCES+=("$NODE_KEY")
-for k in "${KEYSTORE_DIRS[@]:-}"; do
-  TAR_SOURCES+=("$k")
-done
+# jawnie dodajemy kluczowe podkatalogi łańcucha, jeśli istnieją
+[[ -d "${CHAIN_DIR}/db"       ]] && TAR_SOURCES+=("${CHAIN_DIR}/db")
+[[ -d "${CHAIN_DIR}/network"  ]] && TAR_SOURCES+=("${CHAIN_DIR}/network")
+[[ -d "${CHAIN_DIR}/keystore" ]] && TAR_SOURCES+=("${CHAIN_DIR}/keystore")
 
-# --- Tworzenie backupu ---
+# node-key i chain spec
+[[ -f "$NODE_KEY"  ]] && TAR_SOURCES+=("$NODE_KEY")
+[[ -f "$CHAIN_SPEC" ]] && TAR_SOURCES+=("$CHAIN_SPEC")
+
+# keystore'y znalezione dynamicznie
+for k in "${KEYSTORE_DIRS[@]:-}"; do TAR_SOURCES+=("$k"); done
+
+# katalog dowodowy
+TAR_SOURCES+=("$PROOF_DIR")
+
+# --- Tworzenie backupu .tar.zst ---
 echo
 echo "🗜️  Tworzę archiwum (Zstd -19) ..."
 sudo tar -I 'zstd -19' -cvf "$BACKUP_FILE" \
@@ -109,16 +155,12 @@ ARCHIVE_SIZE="$(du -h "$BACKUP_FILE" | awk '{print $1}')"
 echo
 echo "🧩 Weryfikacja zawartości:"
 HAS_KEYSTORE="NO"
-
-# ⬇️ poprawka: listuj z dekoderem zstd i tylko nazwy wpisów
 CONTENT_LIST="$(sudo tar -I zstd -tf "$BACKUP_FILE" || true)"
 
-# szukaj 'keystore' (katalog lub jego zawartość) i dokładnej nazwy 'node-key'
 MATCHED_KEYS="$(printf '%s\n' "$CONTENT_LIST" | grep -E '(^|/)(keystore)(/|$)|(^|/)node-key$' || true)"
 if [[ -n "$MATCHED_KEYS" ]]; then
   HAS_KEYSTORE="YES"
   echo "✅ W archiwum znaleziono kluczowe wpisy:"
-  # wypisz je ładnie w punktach
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     echo "   • $line"
@@ -127,7 +169,6 @@ else
   echo "⚠️  Brak wpisów keystore/node-key w archiwum!"
 fi
 
-# ⬇️ poprawka: testuj zawartość również z -I zstd i po samych nazwach
 if printf '%s\n' "$CONTENT_LIST" | grep -q '^opt/quantus/'; then
   echo "⚠️  UWAGA: backup zawiera pliki źródłowe /opt/quantus (niezalecane!)"
   HAS_SOURCE="YES"
@@ -143,15 +184,40 @@ if grep -Eq "file changed as we read it|File removed before we read it" "$LOG_FI
   echo "⚠️  Wykryto ostrzeżenia o zmianie plików podczas odczytu (node mógł działać)."
 fi
 
+# --- Suma SHA256 (dla archiwum .tar.zst) ---
+sha256sum "$BACKUP_FILE" > "$SHA256_FILE"
+
+# --- (Opcjonalnie) dodatkowe archiwum .rar z rekordem naprawczym 5% ---
+if command -v rar >/dev/null 2>&1; then
+  echo
+  echo "🗄️  Tworzę archiwum RAR (z rekordem naprawczym 5%)..."
+  (
+    cd "${BACKUP_DIR}"
+    # do .rar wrzucamy .tar.zst + .sha256 + katalog proof/ (dowody)
+    rar a -rr5 -m5 -ep1 "$(basename "$BACKUP_RAR")" \
+      "$(basename "$BACKUP_FILE")" \
+      "$(basename "$SHA256_FILE")" \
+      "proof/" > /dev/null
+  )
+  echo "✅ Utworzono: ${BACKUP_RAR}"
+  du -h "${BACKUP_RAR}" || true
+else
+  echo "ℹ️  rar nie jest zainstalowany (apt install rar) – pomijam .rar"
+fi
+
 # --- Zapis meta-informacji do osobnego pliku (dla audytu) ---
 {
   echo "=== Quantus Backup Meta ==="
   echo "Timestamp:       $(date -Is)"
   echo "Backup file:     $BACKUP_FILE"
   echo "Backup size:     $ARCHIVE_SIZE"
+  echo "SHA256 file:     $SHA256_FILE"
+  [[ -f "$BACKUP_RAR" ]] && echo "Backup RAR:      $BACKUP_RAR"
   echo "Source dir:      $DATA_DIR"
   echo "Source size:     $SIZE_BEFORE"
+  echo "Chain dir:       $CHAIN_DIR"
   echo "Node key path:   $NODE_KEY"
+  echo "Chain spec:      $CHAIN_SPEC"
   if [[ ${#KEYSTORE_DIRS[@]} -gt 0 ]]; then
     echo "Keystore paths:"
     for k in "${KEYSTORE_DIRS[@]}"; do echo "  - $k"; done
@@ -169,6 +235,8 @@ fi
 echo
 echo "=== PODSUMOWANIE ==="
 echo "📦 Backup zapisano: $BACKUP_FILE"
+[[ -f "$BACKUP_RAR" ]] && echo "🗄️  Archiwum RAR:  $BACKUP_RAR"
+echo "🧾 Suma SHA256:    $SHA256_FILE"
 echo "📄 Log zapisano:    $LOG_FILE"
 echo "📝 Meta-log:        $SUMMARY_FILE"
 echo "📏 Rozmiar backupu: $ARCHIVE_SIZE"
